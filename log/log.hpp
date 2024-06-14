@@ -1,6 +1,7 @@
 ﻿#ifndef LOG_HPP
 #define LOG_HPP
 #include <string>
+#include <stdexcept>
 
 namespace l
 {
@@ -29,4 +30,11 @@ void LogEr(std::string const & message, std::u8string const & fileName);
     __FILE__ + \
     ":" + std::to_string(__LINE__) + "\n" + \
     message __VA_OPT__(,) __VA_ARGS__);
+
+//log error, and throw std::runtime_error
+#define LThrow(message, ...) \
+    LOG_ERR(message __VA_OPT__(,) __VA_ARGS__);\
+    throw std::runtime_error(message);
+
 #endif // LOG_HPP
+
