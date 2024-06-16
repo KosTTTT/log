@@ -15,20 +15,27 @@
 #include <boost/interprocess/sync/file_lock.hpp>
 #include <boost/interprocess/sync/scoped_lock.hpp>
 
-using namespace l;
-static char8_t const REL_LOG_DIR[] = u8"./Log/";
-static char8_t const LOG_FILE_NAME[] = u8"log.txt";
-static void hm1(std::string const & message,
-                std::u8string const & fileName, struct LoIn & ret);
+static char8_t const* const REL_LOG_DIR    = u8"./Log/";
+static char8_t const* const LOG_FILE_NAME  = u8"log.txt";
 
+namespace l
+{
+
+enum enLogType
+{
+    ER,
+    INFO,
+    PLAIN
+};
 struct LoIn
 {
-    bool log_error;
+    enLogType type;
     std::thread::id thread_id;
     boost::interprocess::ipcdetail::OS_process_id_t proc_id;
     std::u8string file_name;
     std::string message;
 };
+
 class LogThread
 {
     friend void l::exit();
@@ -43,15 +50,19 @@ private:
     void stop();
     void handle_data(LoIn && info);
     void run();
-    std::mutex m_mutex;
     std::condition_variable m_cv;
-    std::queue<LoIn> m_q;
     bool m_work;
+    mutable std::mutex m_mutex;
+    std::queue<LoIn> m_q;
     std::jthread m_thread;
 };
-static std::once_flag g_flag_init;
-static std::once_flag g_flag_deinit;
-static std::unique_ptr<LogThread> g_log_thread;
+
+std::once_flag g_flag_init;
+std::once_flag g_flag_deinit;
+std::unique_ptr<LogThread> g_log_thread;
+void hm1(std::string const & message,
+         std::u8string const & fileName, l::LoIn & ret);
+void handle_dataPlain(std::string && message, std::u8string && fileName);
 
 inline
 LogThread::LogThread():
@@ -63,11 +74,12 @@ LogThread::~LogThread()
 {
     stop();
 }
+
 inline void LogThread::putInfo(LoIn && info)
 {
     {
         std::lock_guard<std::mutex> const l(m_mutex);
-        if(m_work == false)
+        if(!m_work)
             return;
         m_q.emplace(std::move(info));
     }
@@ -85,7 +97,7 @@ void LogThread::run()
             {
                 return !m_q.empty() || !m_work;
             });
-            if(m_work == false && m_q.empty())
+            if(!m_work && m_q.empty())
             {
                 break;
             }
@@ -110,32 +122,45 @@ inline void LogThread::stop()
     m_cv.notify_all();
 }
 
-void l::Log(std::string const & message, std::u8string const & fileName)
+void Log(std::string const & message, std::u8string const & fileName)
 {
     assert(g_log_thread);
     LoIn in;
     hm1(message, fileName, in);
-    in.log_error = false;
+    in.type = l::enLogType::INFO;
     g_log_thread->putInfo(std::move(in));
 }
 
-void l::Log(std::string const & message)
+void Log(std::string const & message)
 {
     Log(message, LOG_FILE_NAME);
 }
-void l::LogEr(std::string const & message)
+void LogPlain(std::string const & message)
+{
+    LogPlain(message, LOG_FILE_NAME);
+}
+void LogPlain(std::string const & message, std::u8string const & fileName)
+{
+    assert(g_log_thread);
+    LoIn in;
+    in.file_name = fileName;
+    in.message = message;
+    in.type = l::enLogType::PLAIN;
+    g_log_thread->putInfo(std::move(in));
+}
+void LogEr(std::string const & message)
 {
     LogEr(message, LOG_FILE_NAME);
 }
-void l::LogEr(std::string const & message, std::u8string const & fileName)
+void LogEr(std::string const & message, std::u8string const & fileName)
 {
     assert(g_log_thread);
     LoIn in;
     hm1(message, fileName, in);
-    in.log_error = true;
+    in.type = l::enLogType::ER;
     g_log_thread->putInfo(std::move(in));
 }
-void l::exit()
+void exit()
 {
     assert(g_log_thread);
     std::call_once(g_flag_deinit, [&]()
@@ -145,7 +170,7 @@ void l::exit()
             g_log_thread->m_thread.join();
     });
 }
-void l::init()
+void init()
 {
     std::call_once(g_flag_init, [&]()
     {
@@ -157,54 +182,66 @@ void l::init()
         g_log_thread.reset(new LogThread{});
     });
 }
-void LogThread::handle_data(LoIn && info)
+void LogThread::handle_data(l::LoIn && info)
 {
-    //**inhance a message
-    std::string all_mess;
+    if(info.type == l::enLogType::PLAIN)
     {
-        std::string th_id;
-        {
-            std::ostringstream ss;
-            ss<<info.thread_id;
-            th_id = ss.str();
-        }
-        std::string proc_id;
-        {
-            std::ostringstream ss;
-            ss<<info.proc_id;
-            proc_id = ss.str();
-        }
-        std::string time;
-        {
-            std::ostringstream ss;
-            std::time_t t = std::time(nullptr);
-            std::tm tm = *std::localtime(&t);
-            ss << std::put_time(&tm, "%H:%M:%S %d/%m/%Y");
-            time = ss.str();
-        }
-        if(info.log_error)
-        {
-            all_mess+="error ";
-        }
-        all_mess+=time +" "+ proc_id+ " " + th_id+ " " + info.message;
+        handle_dataPlain(std::move(info.message), std::move(info.file_name));
     }
-    //**
-    std::filesystem::path const LOG_FILE = std::filesystem::u8path(REL_LOG_DIR + info.file_name).make_preferred();
+    else
+    {
+        //**inhance a message
+        std::string all_mess;
+        {
+            std::string th_id;
+            {
+                std::ostringstream ss;
+                ss<<info.thread_id;
+                th_id = ss.str();
+            }
+            std::string proc_id;
+            {
+                std::ostringstream ss;
+                ss<<info.proc_id;
+                proc_id = ss.str();
+            }
+            std::string time;
+            {
+                std::ostringstream ss;
+                std::time_t t = std::time(nullptr);
+                std::tm tm = *std::localtime(&t);
+                ss << std::put_time(&tm, "%H:%M:%S %d/%m/%Y");
+                time = ss.str();
+            }
+            if(info.type == l::enLogType::ER)
+            {
+                all_mess+="error ";
+            }
+            all_mess+=time +" "+ proc_id+ " " + th_id+ " " + info.message;
+        }
+        //**
+        handle_dataPlain(std::move(all_mess), std::move(info.file_name));
+    }
+}
+void handle_dataPlain(std::string && message, std::u8string && fileName)
+{
+    std::filesystem::path const LOG_FILE = std::filesystem::u8path(REL_LOG_DIR + fileName).make_preferred();
     std::ofstream file(LOG_FILE, std::ios::out | std::ios::app);
     boost::interprocess::file_lock fl(LOG_FILE.native().c_str());
     {
         boost::interprocess::scoped_lock<boost::interprocess::file_lock> const e_lock(fl);
-        file<<all_mess<<std::endl;
+        file<<message<<std::endl;
 #ifndef NDEBUG
-        std::cout<<all_mess<<std::endl;
+        std::cout<<message<<std::endl;
 #endif
     }
 }
 inline void hm1(std::string const & message,
-                std::u8string const & fileName, struct LoIn & in)
+                std::u8string const & fileName, LoIn & in)
 {
     in.thread_id = std::this_thread::get_id();
     in.proc_id = boost::interprocess::ipcdetail::get_current_process_id();
     in.file_name = fileName;
     in.message = message;
 }
+}//namespace l

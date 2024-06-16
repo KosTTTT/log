@@ -16,6 +16,11 @@ void exit();
 void Log(std::string const & message);
 void Log(std::string const & message, std::u8string const & fileName);
 /**
+ * @brief LogPlain Write a message to a file without extra debug information.
+ */
+void LogPlain(std::string const & message);
+void LogPlain(std::string const & message, std::u8string const & fileName);
+/**
  * @brief use LOG_ERR instead
  */
 void LogEr(std::string const & message);
@@ -28,7 +33,7 @@ void LogEr(std::string const & message, std::u8string const & fileName);
 
 #define LOG_ERR(message, ...) l::LogEr(std::string{"file: "} + \
     __FILE__ + \
-    ":" + std::to_string(__LINE__) + "\n" + \
+    ":" + std::to_string(__LINE__) + ":\n" + \
     message __VA_OPT__(,) __VA_ARGS__);
 
 //log error, and throw std::runtime_error
