@@ -2,43 +2,36 @@
 #define LOG_HPP
 #include <string>
 #include <stdexcept>
+#include <source_location>
 
 namespace l
 {
 /**
- * @brief Before calling any of these. Call init. Can't call init after calling "exit"
+ * @brief Before calling any of these. Call init.
  */
 void init();
 /**
  * @brief Before app shutdown call exit. This blocks until all logs written.
  */
 void exit();
-void Log(std::string const & message);
-void Log(std::string const & message, std::u8string const & fileName);
+void Log(std::string message);
+void Log(std::string message, std::u8string fileName);
 /**
  * @brief LogPlain Write a message to a file without extra debug information.
  */
-void LogPlain(std::string const & message);
-void LogPlain(std::string const & message, std::u8string const & fileName);
+void LogPlain(std::string message);
+void LogPlain(std::string message, std::u8string fileName);
 /**
- * @brief use LOG_ERR instead
+ * @brief Like Log function but writes extra debug information and prints "error".
  */
-void LogEr(std::string const & message);
-/**
- * @brief use LOG_ERR instead
- */
-void LogEr(std::string const & message, std::u8string const & fileName);
+void LogEr(std::string message, std::source_location location = std::source_location::current());
+void LogEr(std::string message, std::u8string fileName, std::source_location location = std::source_location::current());
 
 }// namespace l
 
-#define LOG_ERR(message, ...) l::LogEr(std::string{"file: "} + \
-    __FILE__ + \
-    ":" + std::to_string(__LINE__) + ":\n" + \
-    message __VA_OPT__(,) __VA_ARGS__);
-
 //log error, and throw std::runtime_error
 #define LThrow(message, ...) \
-    LOG_ERR(message __VA_OPT__(,) __VA_ARGS__);\
+    l::LogEr(message __VA_OPT__(,) __VA_ARGS__);\
     throw std::runtime_error(message);
 
 #endif // LOG_HPP
