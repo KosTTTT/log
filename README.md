@@ -1,3 +1,3 @@
 # log
-C++ 20 logging for CMake project. Save to use between threads and processes. Cross platform.
-To use copy 'log' folder into your CMake project. Requires boost interprocess.
+C++ 20 logging for CMake project. Safe to use between threads and processes. Cross platform.
+In order to use copy 'log' folder into your CMake project. Requires boost interprocess.
