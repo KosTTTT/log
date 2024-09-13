@@ -3,7 +3,6 @@
 #include <mutex>
 #include <shared_mutex>
 #include <condition_variable>
-#include <filesystem>
 #include <iostream>
 #include <unordered_map>
 #include <fstream>
@@ -14,9 +13,6 @@
 #include <iostream>
 #include <boost/interprocess/sync/file_lock.hpp>
 #include <boost/interprocess/sync/scoped_lock.hpp>
-
-static char8_t const* const REL_LOG_DIR    = u8"./Log/";
-static char8_t const* const LOG_FILE_NAME  = u8"log.txt";
 
 namespace l
 {
@@ -33,6 +29,7 @@ struct LoIn
     std::thread::id thread_id;
     boost::interprocess::ipcdetail::OS_process_id_t proc_id;
     std::u8string file_name;
+    std::filesystem::path path;
     std::string message;
 };
 
@@ -42,31 +39,31 @@ public:
     LogThread();
     ~LogThread();
     void putInfo(LoIn & info);
-private:
     /**
      * @brief mark working thread for stop. It will quit when all logs have written
      */
     void stop();
+private:
     void handle_data(LoIn && info);
     void run();
-    bool m_work;
-    std::jthread m_thread;
-    std::condition_variable m_cv;
+    std::condition_variable_any m_cv;
     mutable std::mutex m_mutex;
     std::deque<LoIn> m_q;
+    std::jthread m_thread;
 };
 
 std::shared_mutex g_mut_lg;
 LogThread* g_log_thread = nullptr;
 void hm1(std::string & message,
-         std::u8string & fileName, l::LoIn & ret);
-void handle_dataPlain(std::string && message, std::u8string && fileName);
+         std::u8string & fileName, std::filesystem::path & path, l::LoIn & ret);
+void handle_dataPlain(std::string && message, std::u8string && fileName, std::filesystem::path && path);
 
 inline
-LogThread::LogThread():
-    m_work(true),
-    m_thread(&LogThread::run, this)
-{}
+LogThread::LogThread()
+{
+    m_thread = std::jthread(&LogThread::run, this);
+}
+
 inline
 LogThread::~LogThread()
 {
@@ -75,10 +72,10 @@ LogThread::~LogThread()
 
 inline void LogThread::putInfo(LoIn & info)
 {
+    if(m_thread.get_stop_token().stop_requested())
+        return;
     {
         std::lock_guard<std::mutex> const l(m_mutex);
-        if(!m_work)
-            return;
         m_q.emplace_back(std::move(info));
     }
     m_cv.notify_all();
@@ -88,14 +85,15 @@ void LogThread::run()
 {
     try
     {
+        std::stop_token stoken = this->m_thread.get_stop_token();
         while(true)
         {
             std::unique_lock<std::mutex> l(m_mutex);
-            m_cv.wait(l, [&]() -> bool
-            {
-                return !m_q.empty() || !m_work;
-            });
-            if(!m_work && m_q.empty())
+            m_cv.wait(l, stoken, [&]()
+                {
+                    return !m_q.empty();
+                });
+            if(stoken.stop_requested() && m_q.empty())
             {
                 break;
             }
@@ -112,56 +110,45 @@ void LogThread::run()
         }
     }
     catch (...)
-    {}
+    {
+        std::cerr<<"Error: LogThread unexpected exception."<<std::endl;
+    }
 }
+
 inline void LogThread::stop()
 {
-    {
-        std::lock_guard<std::mutex> const l(m_mutex);
-        m_work =  false;
-    }
-    m_cv.notify_all();
+    m_thread.request_stop();
     if(m_thread.joinable())
         m_thread.join();
 }
 
-void Log(std::string message, std::u8string fileName)
+void Log(std::string message, FileInfo fileInfo)
 {
     std::shared_lock<std::shared_mutex> l(g_mut_lg);
     if(g_log_thread)
     {
         LoIn in;
-        hm1(message, fileName, in);
+        hm1(message, fileInfo.fileName, fileInfo.path, in);
         in.type = l::enLogType::INFO;
         g_log_thread->putInfo(in);
     }
 }
 
-void Log(std::string message)
-{
-    Log(std::move(message), LOG_FILE_NAME);
-}
-void LogPlain(std::string message)
-{
-    LogPlain(std::move(message), LOG_FILE_NAME);
-}
-void LogPlain(std::string message, std::u8string fileName)
+void LogPlain(std::string message, FileInfo fileInfo)
 {
     std::shared_lock<std::shared_mutex> l(g_mut_lg);
     if(g_log_thread)
     {
         LoIn in;
-        in.file_name = std::move(fileName);
+        in.file_name = std::move(fileInfo.fileName);
         in.message = std::move(message);
+        in.path = std::move(fileInfo.path);
         in.type = l::enLogType::PLAIN;
         g_log_thread->putInfo(in);
     }
 }
-void LogEr(std::string message, std::source_location location)
-{
-    LogEr(std::move(message), LOG_FILE_NAME, std::move(location));
-}
-void LogEr(std::string message, std::u8string fileName, std::source_location location)
+
+void LogEr(std::string message, FileInfo fileInfo, std::source_location location)
 {
     std::shared_lock<std::shared_mutex> l(g_mut_lg);
     if(g_log_thread)
@@ -172,11 +159,12 @@ void LogEr(std::string message, std::u8string fileName, std::source_location loc
                 ":" + std::to_string(location.line()) + ":\n" +
                 message;
         LoIn in;
-        hm1(mnew, fileName, in);
+        hm1(mnew, fileInfo.fileName, fileInfo.path, in);
         in.type = l::enLogType::ER;
         g_log_thread->putInfo(in);
     }
 }
+
 void exit()
 {
     std::lock_guard<std::shared_mutex> l(g_mut_lg);
@@ -188,10 +176,13 @@ void init()
     std::lock_guard<std::shared_mutex> l(g_mut_lg);
     if(!g_log_thread)
     {
-        std::filesystem::path const REL_DIR = std::filesystem::u8path(REL_LOG_DIR).make_preferred();
+        std::filesystem::path const REL_DIR = REL_LOG_DIR;
         if(std::filesystem::exists(REL_DIR) == false)
         {
-            std::filesystem::create_directory(REL_DIR);
+            if(!std::filesystem::create_directories(REL_DIR))
+            {
+                throw std::runtime_error("Could not create directory " + REL_DIR.string());
+            }
         }
         g_log_thread = new LogThread();
     }
@@ -200,7 +191,7 @@ void LogThread::handle_data(l::LoIn && info)
 {
     if(info.type == l::enLogType::PLAIN)
     {
-        handle_dataPlain(std::move(info.message), std::move(info.file_name));
+        handle_dataPlain(std::move(info.message), std::move(info.file_name), std::move(info.path));
     }
     else
     {
@@ -234,14 +225,46 @@ void LogThread::handle_data(l::LoIn && info)
             all_mess+=time +" "+ proc_id+ " " + th_id+ " " + info.message;
         }
         //**
-        handle_dataPlain(std::move(all_mess), std::move(info.file_name));
+        handle_dataPlain(std::move(all_mess), std::move(info.file_name), std::move(info.path));
     }
 }
-void handle_dataPlain(std::string && message, std::u8string && fileName)
+void handle_dataPlain(std::string && message, std::u8string && fileName, std::filesystem::path && path)
 {
-    std::filesystem::path const LOG_FILE = std::filesystem::u8path(REL_LOG_DIR + fileName).make_preferred();
-    std::ofstream file(LOG_FILE, std::ios::out | std::ios::app);
-    boost::interprocess::file_lock fl(LOG_FILE.native().c_str());
+    if(fileName.empty())
+        fileName = LOG_FILE_NAME;
+    if(path.empty())
+    {
+        path = std::filesystem::path(REL_LOG_DIR); //was created in init()
+    }
+    else
+    {
+        if(!std::filesystem::exists(path))
+        {
+            bool success;
+            try
+            {
+                success = std::filesystem::create_directories(path);
+            }
+            catch (...)
+            {
+                success = false;
+            }
+            if(!success)
+            {
+                LogEr("Could not create directory " + path.string());
+                return;
+            }
+        }
+    }
+    path/=fileName;
+    path.make_preferred();
+    std::ofstream file(path, std::ios::out | std::ios::app);
+    if(!file)
+    {
+        LogEr("Could not open a file " + path.string());
+        return;
+    }
+    boost::interprocess::file_lock fl(path.native().c_str());
     {
         boost::interprocess::scoped_lock<boost::interprocess::file_lock> const e_lock(fl);
         file<<message<<std::endl;
@@ -251,11 +274,12 @@ void handle_dataPlain(std::string && message, std::u8string && fileName)
     }
 }
 inline void hm1(std::string & message,
-                std::u8string & fileName, LoIn & in)
+                std::u8string & fileName, std::filesystem::path & path, LoIn & in)
 {
     in.thread_id = std::this_thread::get_id();
     in.proc_id = boost::interprocess::ipcdetail::get_current_process_id();
     in.file_name = std::move(fileName);
+    in.path = std::move(path);
     in.message = std::move(message);
 }
 }//namespace l
