@@ -52,8 +52,8 @@ private:
     std::jthread m_thread;
 };
 
-std::shared_mutex g_mut_lg;
-LogThread* g_log_thread = nullptr;
+constinit std::shared_mutex g_mut_lg;
+constinit LogThread* g_log_thread = nullptr;
 void hm1(std::string & message,
          std::u8string & fileName, std::filesystem::path & path, l::LoIn & ret);
 void handle_dataPlain(std::string && message, std::u8string && fileName, std::filesystem::path && path);
