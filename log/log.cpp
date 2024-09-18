@@ -39,10 +39,6 @@ public:
     LogThread();
     ~LogThread();
     void putInfo(LoIn & info);
-    /**
-     * @brief mark working thread for stop. It will quit when all logs have written
-     */
-    void stop();
 private:
     void handle_data(LoIn && info);
     void run();
@@ -67,7 +63,9 @@ LogThread::LogThread()
 inline
 LogThread::~LogThread()
 {
-    stop();
+    m_thread.request_stop();
+    if(m_thread.joinable())
+        m_thread.join();
 }
 
 inline void LogThread::putInfo(LoIn & info)
@@ -113,13 +111,6 @@ void LogThread::run()
     {
         std::cerr<<"Error: LogThread unexpected exception."<<std::endl;
     }
-}
-
-inline void LogThread::stop()
-{
-    m_thread.request_stop();
-    if(m_thread.joinable())
-        m_thread.join();
 }
 
 void Log(std::string message, FileInfo fileInfo)
