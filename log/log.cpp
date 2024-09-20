@@ -224,27 +224,22 @@ void handle_dataPlain(std::string && message, std::u8string && fileName, std::fi
     if(fileName.empty())
         fileName = LOG_FILE_NAME;
     if(path.empty())
+        path = std::filesystem::path(REL_LOG_DIR);
+    if(!std::filesystem::exists(path))
     {
-        path = std::filesystem::path(REL_LOG_DIR); //was created in init()
-    }
-    else
-    {
-        if(!std::filesystem::exists(path))
+        bool success;
+        try
         {
-            bool success;
-            try
-            {
-                success = std::filesystem::create_directories(path);
-            }
-            catch (...)
-            {
-                success = false;
-            }
-            if(!success)
-            {
-                LogEr("Could not create directory " + path.string());
-                return;
-            }
+            success = std::filesystem::create_directories(path);
+        }
+        catch (...)
+        {
+            success = false;
+        }
+        if(!success)
+        {
+            LogEr("Could not create directory " + path.string());
+            return;
         }
     }
     path/=fileName;
