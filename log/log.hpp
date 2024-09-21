@@ -39,9 +39,9 @@ void LogEr(std::string message, FileInfo fileInfo = {.fileName = LOG_FILE_NAME, 
 }// namespace l
 
 //log error, and throw std::runtime_error
-#define LThrow(message, ...) \
+#define LThrow(message, ...) {\
     l::LogEr(message __VA_OPT__(,) __VA_ARGS__);\
-    throw std::runtime_error(message);
+    throw std::runtime_error(message);}
 
 #endif // LOG_HPP
 
