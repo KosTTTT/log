@@ -8,8 +8,8 @@
 namespace l
 {
 
-inline static char8_t const* const REL_LOG_DIR    = u8"./Log/";
-inline static char8_t const* const LOG_FILE_NAME  = u8"log.txt";
+inline constexpr char8_t const* const REL_LOG_DIR    = u8"./Log/";
+inline constexpr char8_t const* const LOG_FILE_NAME  = u8"log.txt";
 
 struct FileInfo
 {
