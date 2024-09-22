@@ -27,13 +27,18 @@ void init();
 void exit();
 void Log(std::string message, FileInfo fileInfo = {.fileName = LOG_FILE_NAME, .path = REL_LOG_DIR});
 /**
- * @brief LogPlain Write a message to a file without extra debug information.
+ * @brief Write a message to a file without extra debug information.
  */
 void LogPlain(std::string message, FileInfo fileInfo = {.fileName = LOG_FILE_NAME, .path = REL_LOG_DIR});
 /**
  * @brief Like Log function but writes extra debug information and prints "error".
  */
 void LogEr(std::string message, FileInfo fileInfo = {.fileName = LOG_FILE_NAME, .path = REL_LOG_DIR},
+           std::source_location location = std::source_location::current());
+/**
+ * @brief Like LogEr but prints "warning"
+ */
+void LogWarn(std::string message, FileInfo fileInfo = {.fileName = LOG_FILE_NAME, .path = REL_LOG_DIR},
            std::source_location location = std::source_location::current());
 
 }// namespace l

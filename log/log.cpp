@@ -19,9 +19,10 @@ namespace l
 
 enum enLogType
 {
-    ER,
+    PLAIN,
     INFO,
-    PLAIN
+    WARN,
+    ER
 };
 struct LoIn
 {
@@ -156,6 +157,23 @@ void LogEr(std::string message, FileInfo fileInfo, std::source_location location
     }
 }
 
+void LogWarn(std::string message, FileInfo fileInfo, std::source_location location)
+{
+    std::shared_lock<std::shared_mutex> l(g_mut_lg);
+    if(g_log_thread)
+    {
+        std::string mnew;
+        mnew+= std::string("file: ") +
+                location.file_name() +
+                ":" + std::to_string(location.line()) + ":\n" +
+                message;
+        LoIn in;
+        hm1(mnew, fileInfo.fileName, fileInfo.path, in);
+        in.type = l::enLogType::WARN;
+        g_log_thread->putInfo(in);
+    }
+}
+
 void exit()
 {
     std::lock_guard<std::shared_mutex> l(g_mut_lg);
@@ -212,6 +230,10 @@ void LogThread::handle_data(l::LoIn && info)
             if(info.type == l::enLogType::ER)
             {
                 all_mess+="error ";
+            }
+            else if(info.type == l::enLogType::WARN)
+            {
+                all_mess+="warning ";
             }
             all_mess+=time +" "+ proc_id+ " " + th_id+ " " + info.message;
         }
