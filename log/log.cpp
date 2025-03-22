@@ -215,6 +215,7 @@ void LogThread::handle_data(l::LoIn && info)
             }
             std::string proc_id;
             {
+                info.proc_id = boost::interprocess::ipcdetail::get_current_process_id();
                 std::ostringstream ss;
                 ss<<info.proc_id;
                 proc_id = ss.str();
@@ -285,7 +286,6 @@ inline void hm1(std::string & message,
                 std::u8string & fileName, std::filesystem::path & path, LoIn & in)
 {
     in.thread_id = std::this_thread::get_id();
-    in.proc_id = boost::interprocess::ipcdetail::get_current_process_id();
     in.file_name = std::move(fileName);
     in.path = std::move(path);
     in.message = std::move(message);
