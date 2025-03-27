@@ -25,20 +25,20 @@ void init();
  * @brief Before app shutdown call exit. This blocks until all logs written.
  */
 void exit();
-void Log(std::string message, FileInfo fileInfo = {.fileName = LOG_FILE_NAME, .path = REL_LOG_DIR});
+void Log(std::string const& message, FileInfo const& fileInfo = {.fileName = LOG_FILE_NAME, .path = REL_LOG_DIR});
 /**
  * @brief Write a message to a file without extra debug information.
  */
-void LogPlain(std::string message, FileInfo fileInfo = {.fileName = LOG_FILE_NAME, .path = REL_LOG_DIR});
+void LogPlain(std::string const& message, FileInfo const& fileInfo = {.fileName = LOG_FILE_NAME, .path = REL_LOG_DIR});
 /**
  * @brief Like Log function but writes extra debug information and prints "error".
  */
-void LogEr(std::string message, FileInfo fileInfo = {.fileName = LOG_FILE_NAME, .path = REL_LOG_DIR},
+void LogEr(std::string const& message, FileInfo const& fileInfo = {.fileName = LOG_FILE_NAME, .path = REL_LOG_DIR},
            std::source_location location = std::source_location::current());
 /**
  * @brief Like LogEr but prints "warning"
  */
-void LogWarn(std::string message, FileInfo fileInfo = {.fileName = LOG_FILE_NAME, .path = REL_LOG_DIR},
+void LogWarn(std::string const& message, FileInfo const& fileInfo = {.fileName = LOG_FILE_NAME, .path = REL_LOG_DIR},
            std::source_location location = std::source_location::current());
 
 }// namespace l

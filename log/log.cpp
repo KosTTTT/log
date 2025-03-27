@@ -40,7 +40,7 @@ public:
     LogThread();
     void putInfo(LoIn & info);
 private:
-    void handle_data(LoIn && info);
+    void handle_data(LoIn & info);
     void run();
     std::condition_variable_any m_cv;
     mutable std::mutex m_mutex;
@@ -50,9 +50,8 @@ private:
 
 constinit std::shared_mutex g_mut_lg;
 constinit LogThread* g_log_thread = nullptr;
-void hm1(std::string & message,
-         std::u8string & fileName, std::filesystem::path & path, l::LoIn & ret);
-void handle_dataPlain(std::string && message, std::u8string && fileName, std::filesystem::path && path);
+
+void handle_dataPlain(std::string & message, std::u8string & fileName, std::filesystem::path & path);
 
 inline
 LogThread::LogThread()
@@ -94,7 +93,7 @@ void LogThread::run()
                 l.unlock();
                 for(auto &dat:qc)
                 {
-                    handle_data(std::move(dat));
+                    handle_data(dat);
                 }
             }
         }
@@ -105,33 +104,36 @@ void LogThread::run()
     }
 }
 
-void Log(std::string message, FileInfo fileInfo)
+void Log(std::string const& message, FileInfo const& fileInfo)
 {
     std::shared_lock<std::shared_mutex> l(g_mut_lg);
     if(g_log_thread)
     {
         LoIn in;
-        hm1(message, fileInfo.fileName, fileInfo.path, in);
+        in.thread_id = std::this_thread::get_id();
+        in.file_name = fileInfo.fileName;
+        in.path = fileInfo.path;
+        in.message = message;
         in.type = l::enLogType::INFO;
         g_log_thread->putInfo(in);
     }
 }
 
-void LogPlain(std::string message, FileInfo fileInfo)
+void LogPlain(std::string const& message, FileInfo const& fileInfo)
 {
     std::shared_lock<std::shared_mutex> l(g_mut_lg);
     if(g_log_thread)
     {
         LoIn in;
-        in.file_name = std::move(fileInfo.fileName);
-        in.message = std::move(message);
-        in.path = std::move(fileInfo.path);
+        in.file_name = fileInfo.fileName;
+        in.message = message;
+        in.path = fileInfo.path;
         in.type = l::enLogType::PLAIN;
         g_log_thread->putInfo(in);
     }
 }
 
-void LogEr(std::string message, FileInfo fileInfo, std::source_location location)
+void LogEr(std::string const& message, FileInfo const& fileInfo, std::source_location location)
 {
     std::shared_lock<std::shared_mutex> l(g_mut_lg);
     if(g_log_thread)
@@ -142,13 +144,16 @@ void LogEr(std::string message, FileInfo fileInfo, std::source_location location
                 ":" + std::to_string(location.line()) + ":\n" +
                 message;
         LoIn in;
-        hm1(mnew, fileInfo.fileName, fileInfo.path, in);
+        in.thread_id = std::this_thread::get_id();
+        in.file_name = fileInfo.fileName;
+        in.path = fileInfo.path;
+        in.message = std::move(mnew);
         in.type = l::enLogType::ER;
         g_log_thread->putInfo(in);
     }
 }
 
-void LogWarn(std::string message, FileInfo fileInfo, std::source_location location)
+void LogWarn(std::string const& message, FileInfo const& fileInfo, std::source_location location)
 {
     std::shared_lock<std::shared_mutex> l(g_mut_lg);
     if(g_log_thread)
@@ -159,7 +164,10 @@ void LogWarn(std::string message, FileInfo fileInfo, std::source_location locati
                 ":" + std::to_string(location.line()) + ":\n" +
                 message;
         LoIn in;
-        hm1(mnew, fileInfo.fileName, fileInfo.path, in);
+        in.thread_id = std::this_thread::get_id();
+        in.file_name = fileInfo.fileName;
+        in.path = fileInfo.path;
+        in.message = std::move(mnew);
         in.type = l::enLogType::WARN;
         g_log_thread->putInfo(in);
     }
@@ -187,11 +195,11 @@ void init()
         g_log_thread = new LogThread();
     }
 }
-void LogThread::handle_data(l::LoIn && info)
+void LogThread::handle_data(l::LoIn & info)
 {
     if(info.type == l::enLogType::PLAIN)
     {
-        handle_dataPlain(std::move(info.message), std::move(info.file_name), std::move(info.path));
+        handle_dataPlain(info.message, info.file_name, info.path);
     }
     else
     {
@@ -230,10 +238,10 @@ void LogThread::handle_data(l::LoIn && info)
             all_mess+=time +" "+ proc_id+ " " + th_id+ " " + info.message;
         }
         //**
-        handle_dataPlain(std::move(all_mess), std::move(info.file_name), std::move(info.path));
+        handle_dataPlain(all_mess, info.file_name, info.path);
     }
 }
-void handle_dataPlain(std::string && message, std::u8string && fileName, std::filesystem::path && path)
+void handle_dataPlain(std::string& message, std::u8string& fileName, std::filesystem::path& path)
 {
     if(fileName.empty())
         fileName = LOG_FILE_NAME;
@@ -273,12 +281,5 @@ void handle_dataPlain(std::string && message, std::u8string && fileName, std::fi
 #endif
     }
 }
-inline void hm1(std::string & message,
-                std::u8string & fileName, std::filesystem::path & path, LoIn & in)
-{
-    in.thread_id = std::this_thread::get_id();
-    in.file_name = std::move(fileName);
-    in.path = std::move(path);
-    in.message = std::move(message);
-}
+
 }//namespace l
