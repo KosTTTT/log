@@ -38,7 +38,6 @@ class LogThread
 {
 public:
     LogThread();
-    ~LogThread();
     void putInfo(LoIn & info);
 private:
     void handle_data(LoIn && info);
@@ -59,14 +58,6 @@ inline
 LogThread::LogThread()
 {
     m_thread = std::jthread(&LogThread::run, this);
-}
-
-inline
-LogThread::~LogThread()
-{
-    m_thread.request_stop();
-    if(m_thread.joinable())
-        m_thread.join();
 }
 
 inline void LogThread::putInfo(LoIn & info)
